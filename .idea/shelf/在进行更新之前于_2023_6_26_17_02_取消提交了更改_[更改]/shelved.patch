@@ -1,0 +1,372 @@
+Index: app/models/rental.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>from app import db\r\nfrom app.models.user import User\r\nfrom datetime import datetime\r\n\r\n# rental.py\r\nclass Rental(db.Model):\r\n    id = db.Column(db.Integer, primary_key=True)\r\n    vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicle.id'))\r\n    renter_id = db.Column(db.Integer, db.ForeignKey('user.id'))\r\n    start_date = db.Column(db.DateTime, default=datetime.utcnow)\r\n    end_date = db.Column(db.DateTime)\r\n    payment_method = db.Column(db.String(50))\r\n    vehicle = db.relationship('Vehicle', backref='rentals')\r\n    renter = db.relationship('User', backref='rentals')
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/models/rental.py b/app/models/rental.py
+--- a/app/models/rental.py	(revision 196110aa3bf254d1b585907e0dbc8d045366319c)
++++ b/app/models/rental.py	(date 1687770101326)
+@@ -1,6 +1,8 @@
+ from app import db
+ from app.models.user import User
+ from datetime import datetime
++from sqlalchemy import ForeignKey
++from sqlalchemy.orm import relationship
+ 
+ # rental.py
+ class Rental(db.Model):
+@@ -11,4 +13,6 @@
+     end_date = db.Column(db.DateTime)
+     payment_method = db.Column(db.String(50))
+     vehicle = db.relationship('Vehicle', backref='rentals')
+-    renter = db.relationship('User', backref='rentals')
+\ No newline at end of file
++    renter = db.relationship('User', backref='rentals')
++    user_id = db.Column(db.Integer, ForeignKey('user.id'))
++    user = relationship('User', backref='rentals')
+Index: app/views/vehicle_views.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+># vehicle_views.py\r\nfrom flask import render_template, redirect, url_for, flash, request, abort\r\nfrom flask_login import login_required, current_user\r\nfrom app import app, db\r\nfrom app.forms.vehicle_form import VehicleForm\r\nfrom app.models.vehicle import Vehicle\r\nfrom werkzeug.utils import secure_filename\r\nfrom werkzeug.datastructures import FileStorage\r\nimport base64\r\nimport os\r\n\r\n@app.template_filter('b64decode')\r\ndef base64_decode(value):\r\n    if value is not None:\r\n        return f\"data:image/jpeg;base64,{value}\"\r\n    return value\r\n\r\n@app.route('/post_vehicle', methods=['GET', 'POST'])\r\n@login_required\r\ndef post_vehicle():\r\n    form = VehicleForm()\r\n    if form.validate_on_submit():\r\n        f = form.photo.data\r\n        filename = secure_filename(f.filename)\r\n        path = os.path.join(app.root_path, 'static/images/', filename)\r\n        f.save(path)\r\n        vehicle = Vehicle(seller_id=current_user.id,\r\n                          brand=form.brand.data,\r\n                          model=form.model.data,\r\n                          price_per_day=form.price_per_day.data,\r\n                          location=form.location.data,\r\n                          delivery_option=form.delivery_option.data,\r\n                          same_city_return_option=form.same_city_return_option.data,\r\n                          long_term_discount_option=form.long_term_discount_option.data,\r\n                          photo=os.path.basename(path))  # Save only the filename\r\n\r\n        db.session.add(vehicle)\r\n        db.session.commit()\r\n        flash('Your vehicle has been posted!', 'success')\r\n        return redirect(url_for('seller'))\r\n    return render_template('post_vehicle.html', title='Post Vehicle', form=form)\r\n\r\n@app.route('/edit_vehicle/<int:vehicle_id>', methods=['GET', 'POST'])\r\n@login_required\r\ndef edit_vehicle(vehicle_id):\r\n    vehicle = Vehicle.query.get_or_404(vehicle_id)\r\n    form = VehicleForm(obj=vehicle)\r\n    if form.validate_on_submit():\r\n        # Handle the photo upload\r\n        if form.photo.data:\r\n            f = form.photo.data\r\n            if isinstance(f, FileStorage):\r\n                filename = secure_filename(f.filename)\r\n                path = os.path.join(app.root_path, 'static/images/', filename)\r\n                f.save(path)\r\n                form.photo.data = filename  # Set the form data to the filename\r\n        form.populate_obj(vehicle)\r\n        db.session.commit()\r\n        flash('Vehicle information has been updated.')\r\n        return redirect(url_for('seller'))\r\n    return render_template('edit_vehicle.html', form=form)\r\n\r\n@app.route('/delete_vehicle/<int:vehicle_id>', methods=['POST'])\r\n@login_required\r\ndef delete_vehicle(vehicle_id):\r\n    vehicle = Vehicle.query.get_or_404(vehicle_id)\r\n    if vehicle.seller_id != current_user.id:\r\n        abort(403)  # Forbidden, the current user is not the seller of this vehicle\r\n    db.session.delete(vehicle)\r\n    db.session.commit()\r\n    flash('Your vehicle has been deleted!', 'success')\r\n    return redirect(url_for('seller'))\r\n\r\n@app.route('/rent_vehicle/<int:vehicle_id>', methods=['GET'])\r\n@login_required\r\ndef rent_vehicle(vehicle_id):\r\n    vehicle = Vehicle.query.get_or_404(vehicle_id)\r\n    return render_template('rent_vehicle.html', vehicle=vehicle)\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/views/vehicle_views.py b/app/views/vehicle_views.py
+--- a/app/views/vehicle_views.py	(revision 196110aa3bf254d1b585907e0dbc8d045366319c)
++++ b/app/views/vehicle_views.py	(date 1687769949622)
+@@ -1,14 +1,22 @@
+ # vehicle_views.py
+-from flask import render_template, redirect, url_for, flash, request, abort
++from flask import render_template, redirect, url_for, flash, request, abort, session
+ from flask_login import login_required, current_user
+ from app import app, db
+ from app.forms.vehicle_form import VehicleForm
+ from app.models.vehicle import Vehicle
++from app.models.rental import Rental
+ from werkzeug.utils import secure_filename
+ from werkzeug.datastructures import FileStorage
++from datetime import datetime
+ import base64
+ import os
+ 
++def calculate_total_price(price_per_day, start_date, end_date):
++    start_date = datetime.strptime(start_date, "%Y-%m-%d")
++    end_date = datetime.strptime(end_date, "%Y-%m-%d")
++    num_days = (end_date - start_date).days + 1
++    return price_per_day * num_days
++
+ @app.template_filter('b64decode')
+ def base64_decode(value):
+     if value is not None:
+@@ -76,8 +84,35 @@
+ def rent_vehicle(vehicle_id):
+     vehicle = Vehicle.query.get_or_404(vehicle_id)
+     return render_template('rent_vehicle.html', vehicle=vehicle)
++    total_price = calculate_total_price(vehicle.price_per_day, start_date, end_date)
+ 
++@app.route('/confirm_rental/<int:vehicle_id>', methods=['POST'])
++@login_required
++def confirm_rental(vehicle_id):
++    vehicle = Vehicle.query.get_or_404(vehicle_id)
++    start_date = request.form.get('start_date')
++    end_date = request.form.get('end_date')
++    # Calculate total price here based on start_date and end_date
++    total_price = calculate_total_price(vehicle.price_per_day, start_date, end_date)
++    # Create a new Rental object and add it to the database
++    rental = Rental(vehicle_id=vehicle.id, user_id=current_user.id, start_date=start_date, end_date=end_date, total_price=total_price)
++    db.session.add(rental)
++    db.session.commit()
++    # Store the rental id in the session so it can be accessed in the payment confirmation view
++    session['rental_id'] = rental.id
++    return redirect(url_for('payment_confirmation'))
+ 
++@app.route('/payment_confirmation', methods=['GET', 'POST'])
++@login_required
++def payment_confirmation():
++    rental_id = session.get('rental_id')
++    if rental_id is None:
++        abort(404)  # No rental id in session, something went wrong
++    rental = Rental.query.get_or_404(rental_id)
++    if request.method == 'POST':
++        # Handle payment here
++        pass
++    return render_template('payment_confirmation.html', rental=rental)
+ 
+ 
+ 
+Index: app/templates/rent_vehicle.html
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><!DOCTYPE html>\r\n<html lang=\"en\">\r\n<head>\r\n    <meta charset=\"UTF-8\">\r\n    <title>Rent Vehicle</title>\r\n    <style>\r\n        .vehicle-image {\r\n            width: 300px;\r\n            height: 200px;\r\n            object-fit: cover;\r\n        }\r\n    </style>\r\n</head>\r\n<body>\r\n    <h1>Rent Vehicle</h1>\r\n    <img class=\"vehicle-image\" src=\"{{ url_for('static', filename='images/' + vehicle.photo) }}\" alt=\"Vehicle Photo\">\r\n    <p>Brand: {{ vehicle.brand }}</p>\r\n    <p>Model: {{ vehicle.model }}</p>\r\n    <p>Price per day: {{ vehicle.price_per_day }}</p>\r\n    <p>Location: {{ vehicle.location }}</p>\r\n    <p>Delivery option: {{ 'Yes' if vehicle.delivery_option else 'No' }}</p>\r\n    <p>Same city return option: {{ 'Yes' if vehicle.same_city_return_option else 'No' }}</p>\r\n    <p>Long term discount option: {{ 'Yes' if vehicle.long_term_discount_option else 'No' }}</p>\r\n    <form method=\"post\">\r\n        <!-- Add form fields for rental details as needed -->\r\n        <input type=\"submit\" value=\"Confirm Rental\" class=\"btn btn-primary\">\r\n    </form>\r\n</body>\r\n</html>\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/templates/rent_vehicle.html b/app/templates/rent_vehicle.html
+--- a/app/templates/rent_vehicle.html	(revision 196110aa3bf254d1b585907e0dbc8d045366319c)
++++ b/app/templates/rent_vehicle.html	(date 1687769669782)
+@@ -10,6 +10,12 @@
+             object-fit: cover;
+         }
+     </style>
++    <script>
++        function setMinEndDate() {
++            var startDate = document.getElementById('start_date').value;
++            document.getElementById('end_date').min = startDate;
++        }
++    </script>
+ </head>
+ <body>
+     <h1>Rent Vehicle</h1>
+@@ -21,9 +27,13 @@
+     <p>Delivery option: {{ 'Yes' if vehicle.delivery_option else 'No' }}</p>
+     <p>Same city return option: {{ 'Yes' if vehicle.same_city_return_option else 'No' }}</p>
+     <p>Long term discount option: {{ 'Yes' if vehicle.long_term_discount_option else 'No' }}</p>
+-    <form method="post">
+-        <!-- Add form fields for rental details as needed -->
++    <form action="{{ url_for('confirm_rental', vehicle_id=vehicle.id) }}" method="post">
++        <label for="start_date">Start Date:</label>
++        <input type="date" id="start_date" name="start_date" min="{{ today }}" required onchange="setMinEndDate()">
++        <label for="end_date">End Date:</label>
++        <input type="date" id="end_date" name="end_date" min="{{ today }}" required>
+         <input type="submit" value="Confirm Rental" class="btn btn-primary">
+     </form>
++    <a href="{{ url_for('buyer') }}">Back to listings</a>
+ </body>
+ </html>
+Index: app/templates/buyer.html
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><!DOCTYPE html>\r\n<html>\r\n<head>\r\n    <title>Buyer</title>\r\n</head>\r\n<body>\r\n    <h1>Welcome to the Car Rental Platform, Buyer!</h1>\r\n    <p>Hello, {{ current_user.username }}!</p>\r\n    <p>Email: {{ current_user.email }}</p>\r\n    <p>Phone: {{ current_user.phone }}</p>\r\n    <p>Address: {{ current_user.address_country }}, {{ current_user.address_state }}, {{ current_user.address_city }}, {{ current_user.address_detail }}</p>\r\n    <a href=\"{{ url_for('logout') }}\">Logout</a>\r\n    <div class=\"row\">\r\n        {% for vehicle in vehicles %}\r\n        <div class=\"col-sm-4\">\r\n            <div class=\"card\">\r\n                <img class=\"card-img-top\" src=\"{{ url_for('static', filename='images/' + vehicle.photo) }}\" alt=\"Vehicle Photo\" style=\"width: 100%; height: 200px; object-fit: cover;\">\r\n                <div class=\"card-body\">\r\n                    <h5 class=\"card-title\">{{ vehicle.brand }} {{ vehicle.model }}</h5>\r\n                    <p class=\"card-text\">Price per day: {{ vehicle.price_per_day }}</p>\r\n                    <a href=\"{{ url_for('rent_vehicle', vehicle_id=vehicle.id) }}\" class=\"btn btn-primary\">Rent</a>\r\n                </div>\r\n            </div>\r\n        </div>\r\n        {% endfor %}\r\n    </div>\r\n    <h2>Update Information</h2>\r\n    <p><a href=\"{{ url_for('personal') }}\">Update Personal Information</a></p>\r\n</body>\r\n</html>\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/templates/buyer.html b/app/templates/buyer.html
+--- a/app/templates/buyer.html	(revision 196110aa3bf254d1b585907e0dbc8d045366319c)
++++ b/app/templates/buyer.html	(date 1687767772992)
+@@ -1,7 +1,9 @@
+ <!DOCTYPE html>
+-<html>
++<html lang="en">
+ <head>
++    <meta charset="UTF-8">
+     <title>Buyer</title>
++    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+ </head>
+ <body>
+     <h1>Welcome to the Car Rental Platform, Buyer!</h1>
+@@ -10,16 +12,19 @@
+     <p>Phone: {{ current_user.phone }}</p>
+     <p>Address: {{ current_user.address_country }}, {{ current_user.address_state }}, {{ current_user.address_city }}, {{ current_user.address_detail }}</p>
+     <a href="{{ url_for('logout') }}">Logout</a>
++    <h2>My Vehicles</h2>
+     <div class="row">
+         {% for vehicle in vehicles %}
+         <div class="col-sm-4">
+             <div class="card">
+-                <img class="card-img-top" src="{{ url_for('static', filename='images/' + vehicle.photo) }}" alt="Vehicle Photo" style="width: 100%; height: 200px; object-fit: cover;">
+-                <div class="card-body">
+-                    <h5 class="card-title">{{ vehicle.brand }} {{ vehicle.model }}</h5>
+-                    <p class="card-text">Price per day: {{ vehicle.price_per_day }}</p>
+-                    <a href="{{ url_for('rent_vehicle', vehicle_id=vehicle.id) }}" class="btn btn-primary">Rent</a>
+-                </div>
++                <a href="{{ url_for('rent_vehicle', vehicle_id=vehicle.id) }}">
++                    <img class="card-img-top" src="{{ url_for('static', filename='images/' + vehicle.photo) }}" alt="Vehicle Photo">
++                    <div class="card-body">
++                        <h5 class="card-title">{{ vehicle.brand }} {{ vehicle.model }}</h5>
++                        <p class="card-text">Price per day: {{ vehicle.price_per_day }}</p>
++                        <a href="{{ url_for('rent_vehicle', vehicle_id=vehicle.id) }}" class="btn btn-primary">Rent</a>
++                    </div>
++                </a>
+             </div>
+         </div>
+         {% endfor %}
+Index: app/models/user.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>from werkzeug.security import generate_password_hash, check_password_hash\r\nfrom flask_login import UserMixin\r\nfrom app import db\r\nfrom app.models.vehicle import Vehicle\r\n\r\nclass User(UserMixin, db.Model):\r\n    id = db.Column(db.Integer, primary_key=True)\r\n    username = db.Column(db.String(64), unique=True)\r\n    email = db.Column(db.String(120), unique=True, nullable=False)\r\n    password_hash = db.Column(db.String(128))\r\n    phone = db.Column(db.String(20))\r\n    address_country = db.Column(db.String(64))\r\n    address_state = db.Column(db.String(64))\r\n    address_city = db.Column(db.String(64))\r\n    address_detail = db.Column(db.String(256))\r\n    user_type = db.Column(db.String(64))\r\n    vehicles = db.relationship('Vehicle', backref='seller', lazy='dynamic')\r\n\r\n    def set_password(self, password):\r\n        self.password_hash = generate_password_hash(password)\r\n\r\n    def check_password(self, password):\r\n        return check_password_hash(self.password_hash, password)\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/models/user.py b/app/models/user.py
+--- a/app/models/user.py	(revision 196110aa3bf254d1b585907e0dbc8d045366319c)
++++ b/app/models/user.py	(date 1687767007620)
+@@ -14,6 +14,7 @@
+     address_city = db.Column(db.String(64))
+     address_detail = db.Column(db.String(256))
+     user_type = db.Column(db.String(64))
++    balance = db.Column(db.Float, default=0.0)  # Added this line
+     vehicles = db.relationship('Vehicle', backref='seller', lazy='dynamic')
+ 
+     def set_password(self, password):
+Index: migrations/versions/645bcb732e9b_.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/migrations/versions/645bcb732e9b_.py b/migrations/versions/645bcb732e9b_.py
+new file mode 100644
+--- /dev/null	(date 1687770103499)
++++ b/migrations/versions/645bcb732e9b_.py	(date 1687770103499)
+@@ -0,0 +1,40 @@
++"""empty message
++
++Revision ID: 645bcb732e9b
++Revises: cd8c3f885f5e
++Create Date: 2023-06-26 17:01:43.466977
++
++"""
++from alembic import op
++import sqlalchemy as sa
++
++
++# revision identifiers, used by Alembic.
++revision = '645bcb732e9b'
++down_revision = 'cd8c3f885f5e'
++branch_labels = None
++depends_on = None
++
++
++def upgrade():
++    # ### commands auto generated by Alembic - please adjust! ###
++    op.create_table('rental',
++    sa.Column('id', sa.Integer(), nullable=False),
++    sa.Column('vehicle_id', sa.Integer(), nullable=True),
++    sa.Column('renter_id', sa.Integer(), nullable=True),
++    sa.Column('start_date', sa.DateTime(), nullable=True),
++    sa.Column('end_date', sa.DateTime(), nullable=True),
++    sa.Column('payment_method', sa.String(length=50), nullable=True),
++    sa.Column('user_id', sa.Integer(), nullable=True),
++    sa.ForeignKeyConstraint(['renter_id'], ['user.id'], ),
++    sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
++    sa.ForeignKeyConstraint(['vehicle_id'], ['vehicle.id'], ),
++    sa.PrimaryKeyConstraint('id')
++    )
++    # ### end Alembic commands ###
++
++
++def downgrade():
++    # ### commands auto generated by Alembic - please adjust! ###
++    op.drop_table('rental')
++    # ### end Alembic commands ###
+Index: .idea/vcs.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<project version=\"4\">\r\n  <component name=\"VcsDirectoryMappings\">\r\n    <mapping directory=\"$PROJECT_DIR$/HelloVehicle\" vcs=\"Git\" />\r\n  </component>\r\n</project>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/vcs.xml b/.idea/vcs.xml
+--- a/.idea/vcs.xml	(revision 196110aa3bf254d1b585907e0dbc8d045366319c)
++++ b/.idea/vcs.xml	(date 1687766932167)
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+ <project version="4">
+   <component name="VcsDirectoryMappings">
+-    <mapping directory="$PROJECT_DIR$/HelloVehicle" vcs="Git" />
++    <mapping directory="$PROJECT_DIR$" vcs="Git" />
+   </component>
+ </project>
+\ No newline at end of file
+Index: .idea/workspace.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<project version=\"4\">\r\n  <component name=\"AutoImportSettings\">\r\n    <option name=\"autoReloadType\" value=\"SELECTIVE\" />\r\n  </component>\r\n  <component name=\"ChangeListManager\">\r\n    <list default=\"true\" id=\"93a996c7-bb59-4bf4-9da5-21a768010ccb\" name=\"更改\" comment=\"\" />\r\n    <option name=\"SHOW_DIALOG\" value=\"false\" />\r\n    <option name=\"HIGHLIGHT_CONFLICTS\" value=\"true\" />\r\n    <option name=\"HIGHLIGHT_NON_ACTIVE_CHANGELIST\" value=\"false\" />\r\n    <option name=\"LAST_RESOLUTION\" value=\"IGNORE\" />\r\n  </component>\r\n  <component name=\"FileTemplateManagerImpl\">\r\n    <option name=\"RECENT_TEMPLATES\">\r\n      <list>\r\n        <option value=\"Python Script\" />\r\n        <option value=\"HTML File\" />\r\n      </list>\r\n    </option>\r\n  </component>\r\n  <component name=\"Git.Settings\">\r\n    <option name=\"RECENT_GIT_ROOT_PATH\" value=\"$PROJECT_DIR$/HelloVehicle\" />\r\n  </component>\r\n  <component name=\"ProjectId\" id=\"2RbBdnekwMZAO5aAOh9gjyi5u7A\" />\r\n  <component name=\"ProjectViewState\">\r\n    <option name=\"hideEmptyMiddlePackages\" value=\"true\" />\r\n    <option name=\"showLibraryContents\" value=\"true\" />\r\n  </component>\r\n  <component name=\"PropertiesComponent\"><![CDATA[{\r\n  \"keyToString\": {\r\n    \"DefaultHtmlFileTemplate\": \"HTML File\",\r\n    \"RunOnceActivity.OpenProjectViewOnStart\": \"true\",\r\n    \"RunOnceActivity.ShowReadmeOnStart\": \"true\",\r\n    \"WebServerToolWindowFactoryState\": \"false\",\r\n    \"ignore.virus.scanning.warn.message\": \"true\",\r\n    \"last_opened_file_path\": \"C:/Users/neuedustu16/PycharmProjects/HelloVehicle/app/templates\",\r\n    \"node.js.detected.package.eslint\": \"true\",\r\n    \"node.js.detected.package.tslint\": \"true\",\r\n    \"node.js.selected.package.eslint\": \"(autodetect)\",\r\n    \"node.js.selected.package.tslint\": \"(autodetect)\",\r\n    \"vue.rearranger.settings.migration\": \"true\"\r\n  }\r\n}]]></component>\r\n  <component name=\"RecentsManager\">\r\n    <key name=\"CopyFile.RECENT_KEYS\">\r\n      <recent name=\"C:\\Users\\neuedustu16\\PycharmProjects\\HelloVehicle\\app\\templates\" />\r\n      <recent name=\"C:\\Users\\neuedustu16\\PycharmProjects\\HelloVehicle\\app\\forms\" />\r\n    </key>\r\n    <key name=\"MoveFile.RECENT_KEYS\">\r\n      <recent name=\"C:\\Users\\neuedustu16\\PycharmProjects\\HelloVehicle\" />\r\n      <recent name=\"C:\\Users\\neuedustu16\\PycharmProjects\\HelloVehicle\\app\" />\r\n      <recent name=\"C:\\Users\\neuedustu16\\PycharmProjects\\HelloVehicle\\models\" />\r\n    </key>\r\n  </component>\r\n  <component name=\"RunManager\" selected=\"Flask 服务器.HelloVehicle\">\r\n    <configuration name=\"HelloVehicle\" type=\"PythonConfigurationType\" factoryName=\"Python\">\r\n      <module name=\"HelloVehicle\" />\r\n      <option name=\"INTERPRETER_OPTIONS\" value=\"\" />\r\n      <option name=\"PARENT_ENVS\" value=\"true\" />\r\n      <envs>\r\n        <env name=\"PYTHONUNBUFFERED\" value=\"1\" />\r\n      </envs>\r\n      <option name=\"SDK_HOME\" value=\"\" />\r\n      <option name=\"WORKING_DIRECTORY\" value=\"\" />\r\n      <option name=\"IS_MODULE_SDK\" value=\"true\" />\r\n      <option name=\"ADD_CONTENT_ROOTS\" value=\"true\" />\r\n      <option name=\"ADD_SOURCE_ROOTS\" value=\"true\" />\r\n      <EXTENSION ID=\"PythonCoverageRunConfigurationExtension\" runner=\"coverage.py\" />\r\n      <option name=\"SCRIPT_NAME\" value=\"$PROJECT_DIR$/app/__init__.py\" />\r\n      <option name=\"PARAMETERS\" value=\"\" />\r\n      <option name=\"SHOW_COMMAND_LINE\" value=\"false\" />\r\n      <option name=\"EMULATE_TERMINAL\" value=\"false\" />\r\n      <option name=\"MODULE_MODE\" value=\"false\" />\r\n      <option name=\"REDIRECT_INPUT\" value=\"false\" />\r\n      <option name=\"INPUT_FILE\" value=\"\" />\r\n      <method v=\"2\" />\r\n    </configuration>\r\n    <configuration name=\"app\" type=\"PythonConfigurationType\" factoryName=\"Python\" nameIsGenerated=\"true\">\r\n      <module name=\"HelloVehicle\" />\r\n      <option name=\"INTERPRETER_OPTIONS\" value=\"\" />\r\n      <option name=\"PARENT_ENVS\" value=\"true\" />\r\n      <envs>\r\n        <env name=\"PYTHONUNBUFFERED\" value=\"1\" />\r\n      </envs>\r\n      <option name=\"SDK_HOME\" value=\"\" />\r\n      <option name=\"WORKING_DIRECTORY\" value=\"$PROJECT_DIR$\" />\r\n      <option name=\"IS_MODULE_SDK\" value=\"true\" />\r\n      <option name=\"ADD_CONTENT_ROOTS\" value=\"true\" />\r\n      <option name=\"ADD_SOURCE_ROOTS\" value=\"true\" />\r\n      <EXTENSION ID=\"PythonCoverageRunConfigurationExtension\" runner=\"coverage.py\" />\r\n      <option name=\"SCRIPT_NAME\" value=\"C:\\Users\\neuedustu16\\PycharmProjects\\HelloVehicle\\app.py\" />\r\n      <option name=\"PARAMETERS\" value=\"\" />\r\n      <option name=\"SHOW_COMMAND_LINE\" value=\"false\" />\r\n      <option name=\"EMULATE_TERMINAL\" value=\"false\" />\r\n      <option name=\"MODULE_MODE\" value=\"false\" />\r\n      <option name=\"REDIRECT_INPUT\" value=\"false\" />\r\n      <option name=\"INPUT_FILE\" value=\"\" />\r\n      <method v=\"2\" />\r\n    </configuration>\r\n    <configuration name=\"run\" type=\"PythonConfigurationType\" factoryName=\"Python\" temporary=\"true\" nameIsGenerated=\"true\">\r\n      <module name=\"HelloVehicle\" />\r\n      <option name=\"INTERPRETER_OPTIONS\" value=\"\" />\r\n      <option name=\"PARENT_ENVS\" value=\"true\" />\r\n      <envs>\r\n        <env name=\"PYTHONUNBUFFERED\" value=\"1\" />\r\n      </envs>\r\n      <option name=\"SDK_HOME\" value=\"\" />\r\n      <option name=\"WORKING_DIRECTORY\" value=\"$PROJECT_DIR$\" />\r\n      <option name=\"IS_MODULE_SDK\" value=\"true\" />\r\n      <option name=\"ADD_CONTENT_ROOTS\" value=\"true\" />\r\n      <option name=\"ADD_SOURCE_ROOTS\" value=\"true\" />\r\n      <EXTENSION ID=\"PythonCoverageRunConfigurationExtension\" runner=\"coverage.py\" />\r\n      <option name=\"SCRIPT_NAME\" value=\"$PROJECT_DIR$/run.py\" />\r\n      <option name=\"PARAMETERS\" value=\"\" />\r\n      <option name=\"SHOW_COMMAND_LINE\" value=\"false\" />\r\n      <option name=\"EMULATE_TERMINAL\" value=\"false\" />\r\n      <option name=\"MODULE_MODE\" value=\"false\" />\r\n      <option name=\"REDIRECT_INPUT\" value=\"false\" />\r\n      <option name=\"INPUT_FILE\" value=\"\" />\r\n      <method v=\"2\" />\r\n    </configuration>\r\n    <configuration name=\"HelloVehicle\" type=\"Python.FlaskServer\">\r\n      <module name=\"HelloVehicle\" />\r\n      <option name=\"target\" value=\"$PROJECT_DIR$/app/__init__.py\" />\r\n      <option name=\"targetType\" value=\"PATH\" />\r\n      <option name=\"INTERPRETER_OPTIONS\" value=\"\" />\r\n      <option name=\"PARENT_ENVS\" value=\"true\" />\r\n      <option name=\"SDK_HOME\" value=\"\" />\r\n      <option name=\"WORKING_DIRECTORY\" value=\"\" />\r\n      <option name=\"IS_MODULE_SDK\" value=\"true\" />\r\n      <option name=\"ADD_CONTENT_ROOTS\" value=\"true\" />\r\n      <option name=\"ADD_SOURCE_ROOTS\" value=\"true\" />\r\n      <EXTENSION ID=\"PythonCoverageRunConfigurationExtension\" runner=\"coverage.py\" />\r\n      <option name=\"launchJavascriptDebuger\" value=\"false\" />\r\n      <method v=\"2\" />\r\n    </configuration>\r\n    <list>\r\n      <item itemvalue=\"Flask 服务器.HelloVehicle\" />\r\n      <item itemvalue=\"Python.app\" />\r\n      <item itemvalue=\"Python.HelloVehicle\" />\r\n      <item itemvalue=\"Python.run\" />\r\n    </list>\r\n    <recent_temporary>\r\n      <list>\r\n        <item itemvalue=\"Python.run\" />\r\n      </list>\r\n    </recent_temporary>\r\n  </component>\r\n  <component name=\"SpellCheckerSettings\" RuntimeDictionaries=\"0\" Folders=\"0\" CustomDictionaries=\"0\" DefaultDictionary=\"应用程序级\" UseSingleDictionary=\"true\" transferred=\"true\" />\r\n  <component name=\"TaskManager\">\r\n    <task active=\"true\" id=\"Default\" summary=\"默认任务\">\r\n      <changelist id=\"93a996c7-bb59-4bf4-9da5-21a768010ccb\" name=\"更改\" comment=\"\" />\r\n      <created>1687508989708</created>\r\n      <option name=\"number\" value=\"Default\" />\r\n      <option name=\"presentableId\" value=\"Default\" />\r\n      <updated>1687508989708</updated>\r\n      <workItem from=\"1687508997704\" duration=\"48535000\" />\r\n      <workItem from=\"1687618006140\" duration=\"109000\" />\r\n      <workItem from=\"1687619898945\" duration=\"5614000\" />\r\n      <workItem from=\"1687655927878\" duration=\"5544000\" />\r\n      <workItem from=\"1687679706222\" duration=\"82000\" />\r\n      <workItem from=\"1687679801618\" duration=\"5848000\" />\r\n    </task>\r\n    <servers />\r\n  </component>\r\n  <component name=\"TypeScriptGeneratedFilesManager\">\r\n    <option name=\"version\" value=\"3\" />\r\n  </component>\r\n  <component name=\"com.intellij.coverage.CoverageDataManagerImpl\">\r\n    <SUITE FILE_PATH=\"coverage/run_py$HelloVehicle.coverage\" NAME=\"HelloVehicle 覆盖结果\" MODIFIED=\"1687693685734\" SOURCE_PROVIDER=\"com.intellij.coverage.DefaultCoverageFileProvider\" RUNNER=\"coverage.py\" COVERAGE_BY_TEST_ENABLED=\"true\" COVERAGE_TRACING_ENABLED=\"false\" WORKING_DIRECTORY=\"\" />\r\n    <SUITE FILE_PATH=\"coverage/run_py$run.coverage\" NAME=\"run 覆盖结果\" MODIFIED=\"1687657999175\" SOURCE_PROVIDER=\"com.intellij.coverage.DefaultCoverageFileProvider\" RUNNER=\"coverage.py\" COVERAGE_BY_TEST_ENABLED=\"true\" COVERAGE_TRACING_ENABLED=\"false\" WORKING_DIRECTORY=\"$PROJECT_DIR$\" />\r\n    <SUITE FILE_PATH=\"coverage/HelloVehicle$run.coverage\" NAME=\"run 覆盖结果\" MODIFIED=\"1687615752401\" SOURCE_PROVIDER=\"com.intellij.coverage.DefaultCoverageFileProvider\" RUNNER=\"coverage.py\" COVERAGE_BY_TEST_ENABLED=\"true\" COVERAGE_TRACING_ENABLED=\"false\" WORKING_DIRECTORY=\"$PROJECT_DIR$\" />\r\n    <SUITE FILE_PATH=\"coverage/HelloVehicle$app.coverage\" NAME=\"app 覆盖结果\" MODIFIED=\"1687575424618\" SOURCE_PROVIDER=\"com.intellij.coverage.DefaultCoverageFileProvider\" RUNNER=\"coverage.py\" COVERAGE_BY_TEST_ENABLED=\"true\" COVERAGE_TRACING_ENABLED=\"false\" WORKING_DIRECTORY=\"$PROJECT_DIR$\" />\r\n  </component>\r\n</project>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/workspace.xml b/.idea/workspace.xml
+--- a/.idea/workspace.xml	(revision 196110aa3bf254d1b585907e0dbc8d045366319c)
++++ b/.idea/workspace.xml	(date 1687769981175)
+@@ -4,7 +4,14 @@
+     <option name="autoReloadType" value="SELECTIVE" />
+   </component>
+   <component name="ChangeListManager">
+-    <list default="true" id="93a996c7-bb59-4bf4-9da5-21a768010ccb" name="更改" comment="" />
++    <list default="true" id="93a996c7-bb59-4bf4-9da5-21a768010ccb" name="更改" comment="">
++      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/app/models/user.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/models/user.py" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/app/templates/buyer.html" beforeDir="false" afterPath="$PROJECT_DIR$/app/templates/buyer.html" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/app/templates/rent_vehicle.html" beforeDir="false" afterPath="$PROJECT_DIR$/app/templates/rent_vehicle.html" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/app/views/vehicle_views.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/views/vehicle_views.py" afterDir="false" />
++    </list>
+     <option name="SHOW_DIALOG" value="false" />
+     <option name="HIGHLIGHT_CONFLICTS" value="true" />
+     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+@@ -19,28 +26,28 @@
+     </option>
+   </component>
+   <component name="Git.Settings">
+-    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/HelloVehicle" />
++    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+   </component>
+   <component name="ProjectId" id="2RbBdnekwMZAO5aAOh9gjyi5u7A" />
+   <component name="ProjectViewState">
+     <option name="hideEmptyMiddlePackages" value="true" />
+     <option name="showLibraryContents" value="true" />
+   </component>
+-  <component name="PropertiesComponent"><![CDATA[{
+-  "keyToString": {
+-    "DefaultHtmlFileTemplate": "HTML File",
+-    "RunOnceActivity.OpenProjectViewOnStart": "true",
+-    "RunOnceActivity.ShowReadmeOnStart": "true",
+-    "WebServerToolWindowFactoryState": "false",
+-    "ignore.virus.scanning.warn.message": "true",
+-    "last_opened_file_path": "C:/Users/neuedustu16/PycharmProjects/HelloVehicle/app/templates",
+-    "node.js.detected.package.eslint": "true",
+-    "node.js.detected.package.tslint": "true",
+-    "node.js.selected.package.eslint": "(autodetect)",
+-    "node.js.selected.package.tslint": "(autodetect)",
+-    "vue.rearranger.settings.migration": "true"
++  <component name="PropertiesComponent">{
++  &quot;keyToString&quot;: {
++    &quot;DefaultHtmlFileTemplate&quot;: &quot;HTML File&quot;,
++    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
++    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
++    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
++    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
++    &quot;last_opened_file_path&quot;: &quot;C:/Users/neuedustu16/PycharmProjects/HelloVehicle/app/templates&quot;,
++    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
++    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
++    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
++    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
++    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+   }
+-}]]></component>
++}</component>
+   <component name="RecentsManager">
+     <key name="CopyFile.RECENT_KEYS">
+       <recent name="C:\Users\neuedustu16\PycharmProjects\HelloVehicle\app\templates" />
+@@ -125,9 +132,10 @@
+       <option name="targetType" value="PATH" />
+       <option name="INTERPRETER_OPTIONS" value="" />
+       <option name="PARENT_ENVS" value="true" />
+-      <option name="SDK_HOME" value="" />
++      <option name="SDK_HOME" value="C:\Users\neuedustu16\PycharmProjects\HelloVehicle\venv\Scripts\python.exe" />
++      <option name="SDK_NAME" value="Python 3.11 (HelloVehicle) (5)" />
+       <option name="WORKING_DIRECTORY" value="" />
+-      <option name="IS_MODULE_SDK" value="true" />
++      <option name="IS_MODULE_SDK" value="false" />
+       <option name="ADD_CONTENT_ROOTS" value="true" />
+       <option name="ADD_SOURCE_ROOTS" value="true" />
+       <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+@@ -160,6 +168,8 @@
+       <workItem from="1687655927878" duration="5544000" />
+       <workItem from="1687679706222" duration="82000" />
+       <workItem from="1687679801618" duration="5848000" />
++      <workItem from="1687766913011" duration="1891000" />
++      <workItem from="1687768817402" duration="1163000" />
+     </task>
+     <servers />
+   </component>
+@@ -167,7 +177,7 @@
+     <option name="version" value="3" />
+   </component>
+   <component name="com.intellij.coverage.CoverageDataManagerImpl">
+-    <SUITE FILE_PATH="coverage/run_py$HelloVehicle.coverage" NAME="HelloVehicle 覆盖结果" MODIFIED="1687693685734" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
++    <SUITE FILE_PATH="coverage/run_py$HelloVehicle.coverage" NAME="HelloVehicle 覆盖结果" MODIFIED="1687769949630" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+     <SUITE FILE_PATH="coverage/run_py$run.coverage" NAME="run 覆盖结果" MODIFIED="1687657999175" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+     <SUITE FILE_PATH="coverage/HelloVehicle$run.coverage" NAME="run 覆盖结果" MODIFIED="1687615752401" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+     <SUITE FILE_PATH="coverage/HelloVehicle$app.coverage" NAME="app 覆盖结果" MODIFIED="1687575424618" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
